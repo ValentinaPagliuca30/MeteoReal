@@ -6,8 +6,8 @@ import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 
 const links = [
-  { href: "/", label: "Home" },
-  { href: "/my-teams", label: "My Teams" },
+  { href: "/", label: "Dashboard" },
+  { href: "/my-teams", label: "Cities" },
 ];
 
 export function SiteHeader() {
@@ -24,19 +24,21 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="border-b border-stone-900/10 bg-stone-950/90 text-stone-50">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-4 sm:px-10">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
-            NBA Scoreboard
-          </p>
-          <p className="mt-1 text-sm text-stone-300">
-            Auth, favorites, and realtime scores
-          </p>
-        </div>
+    <header className="sticky top-0 z-30 px-5 pt-5 sm:px-8 lg:px-10">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 rounded-[1.75rem] border border-white/10 bg-[rgba(7,16,30,0.52)] px-5 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:px-6">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="animate-float-soft flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#79e3ff,#b8ff6d)] text-xl shadow-[0_12px_26px_rgba(121,227,255,0.28)]">
+            ☁
+          </div>
+          <div>
+            <p className="text-lg font-black tracking-[-0.04em] text-white">
+              Meteo Real
+            </p>
+          </div>
+        </Link>
 
         <div className="flex items-center gap-3">
-          <nav className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1">
+          <nav className="hidden items-center gap-2 rounded-full border border-white/8 bg-white/5 p-1 sm:flex">
             {links.map((link) => {
               const active = pathname === link.href;
 
@@ -44,10 +46,10 @@ export function SiteHeader() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-full px-4 py-2 text-sm transition ${
+                  className={`rounded-full px-4 py-2 text-sm font-medium ${
                     active
-                      ? "bg-amber-300 text-stone-950"
-                      : "text-stone-200 hover:bg-white/10"
+                      ? "bg-cyan-200 text-slate-950 shadow-[0_6px_20px_rgba(121,227,255,0.3)]"
+                      : "text-slate-200 hover:bg-white/8"
                   }`}
                 >
                   {link.label}
@@ -57,19 +59,19 @@ export function SiteHeader() {
           </nav>
 
           {loading ? (
-            <div className="rounded-full border border-white/10 px-4 py-2 text-sm text-stone-300">
+            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
               Checking session...
             </div>
           ) : user ? (
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
-              <span className="max-w-44 truncate text-sm text-stone-200">
+              <span className="max-w-40 truncate text-sm text-slate-200">
                 {user.email}
               </span>
               <button
                 type="button"
                 onClick={handleSignOut}
                 disabled={isSigningOut}
-                className="rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200 disabled:opacity-60"
+                className="rounded-full bg-lime-300 px-4 py-2 text-sm font-semibold text-slate-950 shadow-[0_8px_24px_rgba(184,255,109,0.26)] hover:bg-lime-200 disabled:opacity-60"
               >
                 {isSigningOut ? "Signing out..." : "Sign Out"}
               </button>
@@ -77,10 +79,10 @@ export function SiteHeader() {
           ) : (
             <Link
               href="/sign-in"
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
                 pathname === "/sign-in"
-                  ? "bg-amber-300 text-stone-950"
-                  : "border border-white/10 bg-white/5 text-stone-100 hover:bg-white/10"
+                  ? "bg-lime-300 text-slate-950 shadow-[0_8px_24px_rgba(184,255,109,0.26)]"
+                  : "border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
               }`}
             >
               Sign In

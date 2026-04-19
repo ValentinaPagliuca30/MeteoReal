@@ -3,9 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 const POLL_INTERVAL_MS = 30_000;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ESPN_SCOREBOARD_URL =
-  process.env.ESPN_SCOREBOARD_URL ||
-  "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard";
+const OPEN_METEO_BASE_URL =
+  process.env.OPEN_METEO_BASE_URL || "https://api.open-meteo.com/v1/forecast";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
@@ -20,102 +19,83 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   },
 });
 
-function parseNumber(value) {
+function parseNullableNumber(value) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function pickLogo(team) {
-  if (!team) {
-    return "";
+function labelWeather(code, isDay) {
+  switch (code) {
+    case 0:
+      return isDay ? "Clear sky" : "Clear night";
+    case 1:
+    case 2:
+      return "Mostly clear";
+    case 3:
+      return "Overcast";
+    case 45:
+    case 48:
+      return "Fog";
+    case 51:
+    case 53:
+    case 55:
+      return "Drizzle";
+    case 61:
+    case 63:
+    case 65:
+      return "Rain";
+    case 66:
+    case 67:
+      return "Freezing rain";
+    case 71:
+    case 73:
+    case 75:
+    case 77:
+      return "Snow";
+    case 80:
+    case 81:
+    case 82:
+      return "Rain showers";
+    case 85:
+    case 86:
+      return "Snow showers";
+    case 95:
+    case 96:
+    case 99:
+      return "Thunderstorm";
+    default:
+      return "Unknown";
   }
-
-  return team.logo || team.logos?.[0]?.href || team.logos?.[0]?.url || "";
 }
 
-function parseClock(status) {
-  const type = status?.type;
+async function fetchCurrentWeather(city) {
+  const url = new URL(OPEN_METEO_BASE_URL);
+  url.searchParams.set("latitude", String(city.latitude));
+  url.searchParams.set("longitude", String(city.longitude));
+  url.searchParams.set(
+    "current",
+    "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
+  );
+  url.searchParams.set("timezone", "auto");
 
-  if (!type) {
-    return null;
-  }
-
-  if (type.completed) {
-    return "Final";
-  }
-
-  const detail = type.detail || "";
-  const shortDetail = type.shortDetail || "";
-
-  if (type.state === "pre") {
-    return detail || shortDetail || null;
-  }
-
-  return shortDetail || detail || null;
-}
-
-function normalizeGame(event) {
-  const competition = event?.competitions?.[0];
-  const competitors = competition?.competitors || [];
-  const home = competitors.find((team) => team.homeAway === "home");
-  const away = competitors.find((team) => team.homeAway === "away");
-
-  if (!home || !away) {
-    return null;
-  }
-
-  return {
-    id: String(event.id),
-    home_team:
-      home.team?.abbreviation ||
-      home.team?.shortDisplayName ||
-      home.team?.displayName ||
-      "HOME",
-    away_team:
-      away.team?.abbreviation ||
-      away.team?.shortDisplayName ||
-      away.team?.displayName ||
-      "AWAY",
-    scores: {
-      home: parseNumber(home.score),
-      away: parseNumber(away.score),
-    },
-    status:
-      event.status?.type?.description ||
-      event.status?.type?.name ||
-      event.status?.type?.state ||
-      "Scheduled",
-    game_clock: parseClock(event.status),
-    logos: {
-      home: pickLogo(home.team),
-      away: pickLogo(away.team),
-    },
-    updated_at: new Date().toISOString(),
-  };
-}
-
-async function fetchScoreboard() {
-  const response = await fetch(ESPN_SCOREBOARD_URL, {
+  const response = await fetch(url, {
     headers: {
-      "User-Agent": "nba-scoreboard-worker/1.0",
+      "User-Agent": "weather-pulse-worker/1.0",
       Accept: "application/json",
     },
   });
 
   if (!response.ok) {
-    throw new Error(`ESPN request failed with status ${response.status}`);
+    throw new Error(
+      `Open-Meteo request failed for ${city.id} with status ${response.status}`,
+    );
   }
 
   return response.json();
 }
 
-async function upsertGames(games) {
-  if (games.length === 0) {
-    console.log("[worker] no games returned from ESPN");
-    return;
-  }
-
-  const { error } = await supabase.from("games").upsert(games, {
+async function upsertSnapshots(rows) {
+  const { error } = await supabase.from("weather_snapshots").upsert(rows, {
     onConflict: "id",
   });
 
@@ -124,22 +104,63 @@ async function upsertGames(games) {
   }
 }
 
-async function pollGames() {
+async function loadTrackedCities() {
+  const { data, error } = await supabase
+    .from("tracked_cities")
+    .select("id, city_name, country_code, latitude, longitude")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+async function pollWeather() {
   const timestamp = new Date().toISOString();
   console.log(`[worker] poll started at ${timestamp}`);
 
-  const payload = await fetchScoreboard();
-  const games = (payload.events || []).map(normalizeGame).filter(Boolean);
+  const cities = await loadTrackedCities();
 
-  await upsertGames(games);
-  console.log(`[worker] upserted ${games.length} game rows`);
+  if (cities.length === 0) {
+    console.log("[worker] no tracked cities found");
+    return;
+  }
+
+  const rows = await Promise.all(
+    cities.map(async (city) => {
+      const payload = await fetchCurrentWeather(city);
+      const current = payload.current ?? {};
+      const weatherCode = parseNullableNumber(current.weather_code);
+
+      return {
+        id: city.id,
+        city_name: city.city_name,
+        country_code: city.country_code,
+        latitude: city.latitude,
+        longitude: city.longitude,
+        temperature_c: parseNullableNumber(current.temperature_2m),
+        apparent_temperature_c: parseNullableNumber(current.apparent_temperature),
+        wind_speed_kmh: parseNullableNumber(current.wind_speed_10m),
+        weather_code: weatherCode,
+        weather_label: labelWeather(weatherCode, current.is_day === 1),
+        is_day: current.is_day === 1,
+        observed_at: current.time ? new Date(current.time).toISOString() : null,
+        updated_at: new Date().toISOString(),
+      };
+    }),
+  );
+
+  await upsertSnapshots(rows);
+  console.log(`[worker] upserted ${rows.length} weather rows`);
 }
 
 async function run() {
-  await pollGames();
+  await pollWeather();
 
   setInterval(() => {
-    pollGames().catch((error) => {
+    pollWeather().catch((error) => {
       console.error("[worker] poll failed", error);
     });
   }, POLL_INTERVAL_MS);

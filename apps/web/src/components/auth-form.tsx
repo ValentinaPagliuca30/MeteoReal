@@ -49,7 +49,7 @@ export function AuthForm() {
 
   if (loading) {
     return (
-      <div className="rounded-[2rem] border border-stone-900/10 bg-white/70 p-8 text-stone-700">
+      <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-8 text-slate-200 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
         Checking your session...
       </div>
     );
@@ -57,26 +57,26 @@ export function AuthForm() {
 
   if (user) {
     return (
-      <div className="rounded-[2rem] border border-stone-900/10 bg-white/75 p-8 text-stone-700">
-        <p className="text-sm font-semibold uppercase tracking-[0.28em] text-stone-600">
+      <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-8 text-slate-200 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+        <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-cyan-200/90">
           Signed in
         </p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-stone-950">
+        <h1 className="mt-3 text-4xl font-black tracking-[-0.04em] text-white">
           You are already authenticated.
         </h1>
-        <p className="mt-4 text-base leading-8">
-          Logged in as <span className="font-semibold">{user.email}</span>.
+        <p className="mt-4 text-base leading-8 text-slate-300">
+          Logged in as <span className="font-semibold text-white">{user.email}</span>.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
             href="/my-teams"
-            className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-stone-50 transition hover:bg-stone-800"
+            className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-lime-200"
           >
-            Go to My Teams
+            Go to My Cities
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-stone-50"
+            className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
           >
             Back to Home
           </Link>
@@ -86,22 +86,22 @@ export function AuthForm() {
   }
 
   return (
-    <section className="grid gap-6">
-      <div className="rounded-[2rem] border border-stone-900/10 bg-stone-50/80 p-7 shadow-[0_18px_60px_rgba(34,22,8,0.15)] backdrop-blur">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-stone-600">
-          Auth
+    <section className="grid gap-6 pb-10 pt-4 lg:grid-cols-[0.95fr_1.05fr]">
+      <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,24,42,0.92),rgba(18,45,76,0.88)_48%,rgba(10,111,143,0.78))] p-8 text-white shadow-[0_24px_80px_rgba(2,8,23,0.35)]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.4em] text-cyan-100/80">
+          Access
         </p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-stone-950">
-          Sign up or log in to save your teams.
+        <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] sm:text-5xl">
+          Enter the control layer for your private weather feed.
         </h1>
-        <p className="mt-4 max-w-2xl text-base leading-8 text-stone-700">
-          The app uses Supabase Auth. Once you are signed in, `favorites` writes
-          are scoped to your account by RLS.
+        <p className="mt-5 max-w-xl text-base leading-8 text-slate-100/88">
+          Use Supabase Auth to create an account, sign in, and persist your own
+          set of followed cities inside the `favorites` table.
         </p>
       </div>
 
-      <div className="rounded-[2rem] border border-stone-900/10 bg-[linear-gradient(160deg,rgba(255,251,235,0.96),rgba(255,237,213,0.9))] p-6 shadow-[0_18px_60px_rgba(34,22,8,0.14)]">
-        <div className="mb-6 flex gap-2 rounded-full border border-stone-900/10 bg-white/70 p-1">
+      <div className="rounded-[2rem] border border-white/10 bg-[rgba(246,250,255,0.9)] p-6 shadow-[0_22px_54px_rgba(0,0,0,0.22)]">
+        <div className="mb-6 inline-flex gap-2 rounded-full border border-slate-950/8 bg-slate-950/5 p-1">
           {[
             { id: "sign-in", label: "Log In" },
             { id: "sign-up", label: "Sign Up" },
@@ -110,10 +110,10 @@ export function AuthForm() {
               key={tab.id}
               type="button"
               onClick={() => setMode(tab.id as Mode)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
                 mode === tab.id
-                  ? "bg-stone-950 text-stone-50"
-                  : "text-stone-600 hover:bg-white"
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-600 hover:bg-white"
               }`}
             >
               {tab.label}
@@ -122,19 +122,19 @@ export function AuthForm() {
         </div>
 
         <form className="grid gap-4" onSubmit={handleSubmit}>
-          <label className="grid gap-2 text-sm font-medium text-stone-700">
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
             Email
             <input
               type="email"
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="rounded-2xl border border-stone-900/10 bg-white px-4 py-3 text-base text-stone-950 outline-none transition focus:border-stone-900/30"
+              className="rounded-[1.25rem] border border-slate-900/8 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-cyan-400"
               placeholder="you@example.com"
             />
           </label>
 
-          <label className="grid gap-2 text-sm font-medium text-stone-700">
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
             Password
             <input
               type="password"
@@ -142,7 +142,7 @@ export function AuthForm() {
               minLength={6}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="rounded-2xl border border-stone-900/10 bg-white px-4 py-3 text-base text-stone-950 outline-none transition focus:border-stone-900/30"
+              className="rounded-[1.25rem] border border-slate-900/8 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-cyan-400"
               placeholder="At least 6 characters"
             />
           </label>
@@ -150,7 +150,7 @@ export function AuthForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-stone-50 transition hover:bg-stone-800 disabled:opacity-60"
+            className="mt-2 rounded-full bg-cyan-200 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_28px_rgba(121,227,255,0.22)] hover:bg-cyan-100 disabled:opacity-60"
           >
             {submitting
               ? "Submitting..."
@@ -160,7 +160,7 @@ export function AuthForm() {
           </button>
 
           {message ? (
-            <p className="rounded-2xl border border-stone-900/10 bg-white/80 px-4 py-3 text-sm text-stone-700">
+            <p className="rounded-[1.25rem] border border-slate-900/8 bg-white px-4 py-3 text-sm text-slate-700">
               {message}
             </p>
           ) : null}

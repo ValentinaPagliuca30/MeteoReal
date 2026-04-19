@@ -1,134 +1,70 @@
 "use client";
 
-import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { teamOptions } from "@/lib/team-options";
-import { supabase } from "@/lib/supabase";
-import type { FavoriteRow, GameRow } from "@/lib/types";
 import { useAuth } from "@/components/auth-provider";
+import { cityOptions, getAccentForCity } from "@/lib/city-options";
+import { supabase } from "@/lib/supabase";
+import type { FavoriteRow, WeatherRow } from "@/lib/types";
 
-type GameSection = "live" | "upcoming" | "completed";
+function formatTemperature(value: number | null) {
+  if (value === null) {
+    return "--";
+  }
 
-function normalizeTeamKey(value: string) {
-  return value.trim().toLowerCase();
+  return `${Math.round(value)}°C`;
 }
 
-function inferSection(status: string) {
-  const normalized = status.toLowerCase();
-
-  if (
-    normalized.includes("final") ||
-    normalized.includes("completed") ||
-    normalized.includes("postponed")
-  ) {
-    return "completed" satisfies GameSection;
-  }
-
-  if (
-    normalized.includes("scheduled") ||
-    normalized.includes("pre") ||
-    normalized.includes("upcoming") ||
-    normalized.includes("tip")
-  ) {
-    return "upcoming" satisfies GameSection;
-  }
-
-  return "live" satisfies GameSection;
+function weatherEmoji(code: number | null) {
+  if (code === null) return "•";
+  if (code === 0) return "☀";
+  if (code <= 3) return "⛅";
+  if (code <= 55) return "🌫";
+  if (code <= 67) return "🌧";
+  if (code <= 77) return "❄";
+  if (code <= 86) return "🌦";
+  return "⛈";
 }
 
-function findFavoriteMatch(teamName: string, favorites: string[]) {
-  const directMatch = favorites.includes(teamName);
-
-  if (directMatch) {
-    return true;
+function weatherOverlayClass(code: number | null) {
+  if (code === null) return "";
+  if (code === 0 || code <= 2) return "weather-sun";
+  if ([45, 48].includes(code)) return "weather-fog";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "weather-snow";
+  if ([95, 96, 99].includes(code)) return "weather-storm";
+  if ([51, 53, 55, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+    return "weather-rain";
   }
-
-  const teamMeta = teamOptions.find(
-    (option) =>
-      normalizeTeamKey(option.abbr) === normalizeTeamKey(teamName) ||
-      normalizeTeamKey(option.name) === normalizeTeamKey(teamName),
-  );
-
-  if (!teamMeta) {
-    return false;
-  }
-
-  return favorites.some(
-    (favorite) =>
-      normalizeTeamKey(favorite) === normalizeTeamKey(teamMeta.abbr) ||
-      normalizeTeamKey(favorite) === normalizeTeamKey(teamMeta.name),
-  );
-}
-
-function sectionLabel(section: GameSection, game: GameRow) {
-  if (section === "completed") {
-    return "Final";
-  }
-
-  if (section === "upcoming") {
-    return game.game_clock || game.status;
-  }
-
-  return game.game_clock || game.status;
-}
-
-function TeamLogo({
-  src,
-  label,
-}: {
-  src?: string;
-  label: string;
-}) {
-  if (!src) {
-    return (
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-950 text-sm font-black text-stone-50">
-        {label.slice(0, 3).toUpperCase()}
-      </div>
-    );
-  }
-
-  return (
-    <Image
-      src={src}
-      alt={`${label} logo`}
-      width={48}
-      height={48}
-      className="h-12 w-12 rounded-2xl border border-stone-900/10 bg-white object-contain p-2"
-    />
-  );
+  return "";
 }
 
 export function Scoreboard() {
   const { user } = useAuth();
-  const [games, setGames] = useState<GameRow[]>([]);
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [loadingGames, setLoadingGames] = useState(true);
-  const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [snapshots, setSnapshots] = useState<WeatherRow[]>([]);
+  const [favoriteCityIds, setFavoriteCityIds] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadGames() {
-      const { data, error } = await supabase
-        .from("games")
+    async function loadSnapshots() {
+      const { data } = await supabase
+        .from("weather_snapshots")
         .select("*")
-        .order("updated_at", { ascending: false });
+        .order("city_name", { ascending: true });
 
-      if (!error) {
-        setGames((data as GameRow[]) ?? []);
-      }
-
-      setLoadingGames(false);
+      setSnapshots((data as WeatherRow[]) ?? []);
+      setLoading(false);
     }
 
-    loadGames();
+    loadSnapshots();
 
     const channel = supabase
-      .channel("games")
+      .channel("weather_snapshots")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "games" },
-        () => {
-          loadGames();
-        },
+        { event: "*", schema: "public", table: "weather_snapshots" },
+        loadSnapshots,
       )
       .subscribe();
 
@@ -140,201 +76,290 @@ export function Scoreboard() {
   useEffect(() => {
     async function loadFavorites() {
       if (!user) {
-        setFavorites([]);
+        setFavoriteCityIds([]);
         return;
       }
 
-      setLoadingFavorites(true);
-
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("favorites")
-        .select("team_abbr")
+        .select("city_id")
         .eq("user_id", user.id);
 
-      if (!error) {
-        setFavorites(((data as FavoriteRow[]) ?? []).map((row) => row.team_abbr));
-      }
-
-      setLoadingFavorites(false);
+      setFavoriteCityIds(((data as FavoriteRow[]) ?? []).map((row) => row.city_id));
     }
 
     loadFavorites();
   }, [user]);
 
-  const filteredGames = useMemo(() => {
-    if (!user || favorites.length === 0) {
-      return games;
+  const visibleSnapshots = useMemo(() => {
+    if (!user || favoriteCityIds.length === 0) {
+      return snapshots;
     }
 
-    return games.filter(
-      (game) =>
-        findFavoriteMatch(game.home_team, favorites) ||
-        findFavoriteMatch(game.away_team, favorites),
+    return snapshots.filter((row) => favoriteCityIds.includes(row.id));
+  }, [favoriteCityIds, snapshots, user]);
+
+  const filteredSnapshots = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase();
+
+    if (!normalized) {
+      return visibleSnapshots;
+    }
+
+    return visibleSnapshots.filter((row) =>
+      `${row.city_name} ${row.country_code}`.toLowerCase().includes(normalized),
     );
-  }, [favorites, games, user]);
+  }, [searchQuery, visibleSnapshots]);
 
-  const sections = useMemo(() => {
-    const grouped: Record<GameSection, GameRow[]> = {
-      live: [],
-      upcoming: [],
-      completed: [],
-    };
+  const citySuggestions = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase();
 
-    for (const game of filteredGames) {
-      grouped[inferSection(game.status)].push(game);
+    if (normalized.length < 2) {
+      return [];
     }
 
-    return grouped;
-  }, [filteredGames]);
+    return cityOptions
+      .filter((city) =>
+        `${city.name} ${city.country}`.toLowerCase().includes(normalized),
+      )
+      .slice(0, 8);
+  }, [searchQuery]);
+
+  async function addTrackedCity(city: (typeof cityOptions)[number]) {
+    const existing = snapshots.find((row) => row.id === city.id);
+
+    if (existing) {
+      setSearchMessage(`${city.name} is already on the dashboard.`);
+      return;
+    }
+
+    const { error } = await supabase.from("tracked_cities").insert({
+      id: city.id,
+      city_name: city.name,
+      country_code: city.country,
+      latitude: city.latitude,
+      longitude: city.longitude,
+    });
+
+    if (error) {
+      setSearchMessage(error.message);
+      return;
+    }
+
+    setSearchMessage(`${city.name} added. Wait one worker poll and it will appear.`);
+    setSearchQuery("");
+  }
+
+  function weatherCardClasses(code: number | null) {
+    if (code === null) return "from-sky-100 via-white to-slate-100";
+    if (code === 0 || code <= 2) return "from-yellow-100 via-amber-50 to-orange-100";
+    if ([45, 48].includes(code)) return "from-slate-200 via-gray-100 to-zinc-200";
+    if ([71, 73, 75, 77, 85, 86].includes(code)) return "from-cyan-50 via-sky-50 to-blue-100";
+    if ([95, 96, 99].includes(code)) return "from-indigo-200 via-slate-100 to-blue-200";
+    if ([51, 53, 55, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+      return "from-sky-100 via-blue-50 to-indigo-100";
+    }
+    return "from-sky-100 via-white to-slate-100";
+  }
 
   return (
-    <section className="grid gap-6">
-      <div className="rounded-[2rem] border border-stone-900/10 bg-stone-50/80 p-7 shadow-[0_18px_60px_rgba(34,22,8,0.15)] backdrop-blur">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-stone-600">
-          Scoreboard
-        </p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-stone-950">
-          Live games stream into one shared state.
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-8 text-stone-700">
-          The worker writes current scores into Supabase, and this page updates
-          whenever `games` changes. Logged-out users see all games. Logged-in
-          users see only matchups involving their favorite teams.
-        </p>
+    <section className="grid gap-6 pb-10 pt-4">
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+        <div className="animate-fade-up relative overflow-hidden rounded-[2rem] border border-cyan-200/15 bg-[linear-gradient(135deg,rgba(7,24,42,0.92),rgba(18,45,76,0.9)_48%,rgba(10,111,143,0.82))] p-8 shadow-[0_24px_80px_rgba(2,8,23,0.38)]">
+          <div className="absolute -right-12 top-10 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
+          <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-lime-300/10 blur-3xl" />
+
+          <p className="relative text-[11px] font-bold uppercase tracking-[0.4em] text-cyan-100/80">
+            Realtime Weather Dashboard
+          </p>
+          <h1 className="relative mt-4 max-w-3xl text-4xl font-black tracking-[-0.04em] text-white sm:text-6xl">
+            Atmospheric UI for a live, multi-service weather system.
+          </h1>
+          <p className="relative mt-5 max-w-2xl text-base leading-8 text-slate-200/90">
+            Open-Meteo feeds a Railway worker, Supabase stores the latest city
+            state, and Realtime pushes fresh conditions directly into this interface.
+          </p>
+
+          <div className="relative mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/my-teams"
+              className="rounded-full bg-cyan-200 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_14px_30px_rgba(121,227,255,0.28)] hover:bg-cyan-100"
+            >
+              Curate city list
+            </Link>
+            <Link
+              href="/sign-in"
+              className="rounded-full border border-white/15 bg-white/8 px-5 py-3 text-sm font-semibold text-white hover:bg-white/12"
+            >
+              Manage account
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="animate-fade-up-delay-1 rounded-[2rem] border border-white/10 bg-[rgba(9,19,35,0.76)] p-6 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Feed status
+            </p>
+            <p className="mt-3 text-5xl font-black tracking-[-0.05em] text-white">
+              {snapshots.length}
+            </p>
+            <p className="mt-2 text-sm leading-7 text-slate-300">
+              active weather rows currently mirrored from Supabase.
+            </p>
+          </div>
+
+          <div className="animate-fade-up-delay-2 rounded-[2rem] border border-white/10 bg-[rgba(9,19,35,0.76)] p-6 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Personalization
+            </p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {user
+                ? favoriteCityIds.length > 0
+                  ? `${visibleSnapshots.length} saved cities in view`
+                  : "Signed in, all cities visible"
+                : "Public dashboard mode"}
+            </p>
+            <p className="mt-2 text-sm leading-7 text-slate-300">
+              {user
+                ? "Favorites are stored in Supabase and filtered client-side in realtime."
+                : "Sign in to turn this global weather board into a private watchlist."}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {loadingGames ? (
-        <div className="rounded-[2rem] border border-stone-900/10 bg-white/70 p-8 text-stone-700">
-          Loading games...
+      <div className="animate-fade-up rounded-[1.75rem] border border-white/10 bg-[rgba(9,19,35,0.76)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+        <label className="grid gap-2 text-sm font-medium text-slate-300">
+          Search curated cities
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search among the curated city list..."
+            className="rounded-[1.25rem] border border-white/10 bg-white/6 px-4 py-3 text-base text-white outline-none placeholder:text-slate-400 focus:border-cyan-300"
+          />
+        </label>
+        {searchMessage ? (
+          <p className="mt-3 text-sm text-cyan-100">{searchMessage}</p>
+        ) : null}
+        {searchQuery.trim().length >= 2 ? (
+          <div className="mt-3 grid gap-2">
+            {citySuggestions.length === 0 ? (
+              <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                No matching city in the curated list.
+              </div>
+            ) : (
+              citySuggestions.map((city) => (
+                <button
+                  key={city.id}
+                  type="button"
+                  onClick={() => addTrackedCity(city)}
+                  className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3 text-left text-slate-100 hover:bg-white/10"
+                >
+                  <span className="block text-sm font-semibold">
+                    {city.name}, {city.country}
+                  </span>
+                  <span className="block text-xs text-slate-400">
+                    Click to add this city to the tracked weather board
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {loading ? (
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(9,19,35,0.76)] p-8 text-slate-200 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+          Loading weather snapshots...
         </div>
-      ) : filteredGames.length === 0 ? (
-        <div className="rounded-[2rem] border border-stone-900/10 bg-white/70 p-8 text-stone-700">
-          {user
-            ? "No games match your selected teams yet. Add or change favorites in My Teams."
-            : "No games yet. Once the worker writes rows into `games`, they will appear here automatically."}
+      ) : filteredSnapshots.length === 0 ? (
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(9,19,35,0.76)] p-8 text-slate-200 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+          No cities match this search yet.
         </div>
       ) : (
-        <>
-          {(
-            [
-              { id: "live", title: "Live" },
-              { id: "upcoming", title: "Upcoming" },
-              { id: "completed", title: "Completed" },
-            ] as const
-          ).map((section) => (
-            <div key={section.id} className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.28em] text-stone-700">
-                    {section.title}
-                  </p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    {sections[section.id].length} game
-                    {sections[section.id].length === 1 ? "" : "s"}
-                  </p>
-                </div>
-              </div>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredSnapshots.map((snapshot) => {
+            const isFavorite = favoriteCityIds.includes(snapshot.id);
 
-              {sections[section.id].length === 0 ? (
-                <div className="rounded-[2rem] border border-stone-900/10 bg-white/70 p-6 text-stone-600">
-                  No {section.title.toLowerCase()} games in this view.
-                </div>
-              ) : (
-                <div className="grid gap-5 md:grid-cols-2">
-                  {sections[section.id].map((game) => {
-                    const homeFavorite = findFavoriteMatch(game.home_team, favorites);
-                    const awayFavorite = findFavoriteMatch(game.away_team, favorites);
+            return (
+              <Link
+                key={snapshot.id}
+                href={`/cities/${snapshot.id}`}
+                className={`group relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br ${getAccentForCity(snapshot.id)} p-[1px] shadow-[0_22px_54px_rgba(0,0,0,0.22)] hover:shadow-[0_28px_70px_rgba(0,0,0,0.26)]`}
+              >
+                <div className={`relative h-full rounded-[calc(2rem-1px)] bg-gradient-to-b ${weatherCardClasses(snapshot.weather_code)} p-6 text-slate-950`}>
+                  <div className={`weather-overlay ${weatherOverlayClass(snapshot.weather_code)}`} />
+                  <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-white/40 blur-2xl transition duration-300 group-hover:scale-125" />
 
-                    return (
-                      <article
-                        key={game.id}
-                        className="rounded-[2rem] border border-stone-900/10 bg-[linear-gradient(160deg,rgba(255,251,235,0.96),rgba(255,237,213,0.9))] p-6 shadow-[0_15px_40px_rgba(34,22,8,0.12)]"
-                      >
-                        <div className="flex items-center justify-between text-sm text-stone-600">
-                          <div className="flex items-center gap-2">
-                            {section.id === "live" ? (
-                              <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                            ) : null}
-                            <span>{game.status}</span>
-                          </div>
-                          <span
-                            className={`rounded-full px-3 py-1 font-semibold ${
-                              section.id === "completed"
-                                ? "bg-stone-950 text-stone-50"
-                                : "bg-white/80 text-stone-700"
-                            }`}
-                          >
-                            {sectionLabel(section.id, game)}
-                          </span>
-                        </div>
+                  <div className="relative flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-slate-500">
+                        {snapshot.country_code}
+                      </p>
+                      <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">
+                        {snapshot.city_name}
+                      </h2>
+                      <p className="mt-2 text-sm text-slate-700">
+                        {snapshot.weather_label ?? "Condition pending"}
+                      </p>
+                    </div>
+                    <div className="text-5xl">{weatherEmoji(snapshot.weather_code)}</div>
+                  </div>
 
-                        <div className="mt-5 grid gap-4">
-                          {[
-                            {
-                              side: "away",
-                              team: game.away_team,
-                              score: game.scores?.away ?? 0,
-                              favorite: awayFavorite,
-                              logo: game.logos?.away,
-                            },
-                            {
-                              side: "home",
-                              team: game.home_team,
-                              score: game.scores?.home ?? 0,
-                              favorite: homeFavorite,
-                              logo: game.logos?.home,
-                            },
-                          ].map((entry) => (
-                            <div
-                              key={`${game.id}-${entry.side}`}
-                              className="flex items-center justify-between rounded-3xl border border-stone-900/8 bg-white/75 px-4 py-4"
-                            >
-                              <div className="flex items-center gap-3">
-                                <TeamLogo src={entry.logo} label={entry.team} />
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-lg font-bold text-stone-950">
-                                      {entry.team}
-                                    </p>
-                                    <span className="text-xl text-amber-500">
-                                      {entry.favorite ? "★" : ""}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                                    {entry.side}
-                                  </p>
-                                </div>
-                              </div>
-                              <span className="text-3xl font-black text-stone-950">
-                                {entry.score}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </article>
-                    );
-                  })}
+                  <div className="relative mt-8 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                        Temperature
+                      </p>
+                      <p className="mt-2 text-6xl font-black tracking-[-0.06em] text-slate-950">
+                        {formatTemperature(snapshot.temperature_c)}
+                      </p>
+                    </div>
+                    <div className="rounded-full border border-slate-950/10 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-800">
+                      {snapshot.is_day ? "Day cycle" : "Night cycle"}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 grid grid-cols-2 gap-3">
+                    <div className="rounded-[1.25rem] border border-slate-900/6 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
+                        Feels like
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-950">
+                        {formatTemperature(snapshot.apparent_temperature_c)}
+                      </p>
+                    </div>
+                    <div className="rounded-[1.25rem] border border-slate-900/6 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
+                        Wind
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-950">
+                        {snapshot.wind_speed_kmh === null
+                          ? "--"
+                          : `${Math.round(snapshot.wind_speed_kmh)} km/h`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between text-sm text-slate-700">
+                    <span className={isFavorite ? "font-semibold text-sky-900" : ""}>
+                      {isFavorite ? "Saved favorite" : "Public city"}
+                    </span>
+                    <span>
+                      Updated{" "}
+                      {snapshot.updated_at
+                        ? new Date(snapshot.updated_at).toLocaleTimeString()
+                        : "--"}
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
-        </>
+              </Link>
+            );
+          })}
+        </div>
       )}
-
-      <div className="rounded-[2rem] border border-stone-900/10 bg-stone-950 p-6 text-stone-50">
-        <p className="text-sm font-semibold uppercase tracking-[0.28em] text-amber-300">
-          Favorites status
-        </p>
-        <p className="mt-3 text-base text-stone-200">
-          {user
-            ? loadingFavorites
-              ? "Loading your teams..."
-              : `You are following ${favorites.length} team${
-                  favorites.length === 1 ? "" : "s"
-                }.`
-            : "Sign in to save favorites and highlight them on the scoreboard."}
-        </p>
-      </div>
     </section>
   );
 }

@@ -1,20 +1,37 @@
-export type GameRow = {
+export type WeatherRow = {
   id: string;
-  home_team: string;
-  away_team: string;
-  scores: {
-    home?: number;
-    away?: number;
-  } | null;
-  status: string;
-  game_clock: string | null;
-  logos: {
-    home?: string;
-    away?: string;
-  } | null;
+  city_name: string;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  temperature_c: number | null;
+  apparent_temperature_c: number | null;
+  wind_speed_kmh: number | null;
+  weather_code: number | null;
+  weather_label: string | null;
+  is_day: boolean | null;
+  observed_at: string | null;
   updated_at: string;
 };
 
 export type FavoriteRow = {
-  team_abbr: string;
+  city_id: string;
+};
+
+export type TrackedCityRow = {
+  id: string;
+  city_name: string;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type GeocodingResult = {
+  id: number;
+  name: string;
+  country_code: string;
+  country?: string;
+  latitude: number;
+  longitude: number;
+  admin1?: string;
 };

@@ -1,224 +1,198 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { supabase } from "@/lib/supabase";
-import { teamOptions } from "@/lib/team-options";
-import type { FavoriteRow, GameRow } from "@/lib/types";
+import type { FavoriteRow, TrackedCityRow } from "@/lib/types";
 
 export function FavoritesManager() {
   const { user, loading } = useAuth();
-  const [favoriteTeams, setFavoriteTeams] = useState<string[]>([]);
-  const [games, setGames] = useState<GameRow[]>([]);
+  const [favoriteCityIds, setFavoriteCityIds] = useState<string[]>([]);
+  const [trackedCities, setTrackedCities] = useState<TrackedCityRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
-  const [pendingTeam, setPendingTeam] = useState<string | null>(null);
-  const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [pendingCityId, setPendingCityId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadGames() {
+    async function loadTrackedCities() {
       const { data } = await supabase
-        .from("games")
-        .select("*")
-        .order("updated_at", { ascending: false });
+        .from("tracked_cities")
+        .select("id, city_name, country_code, latitude, longitude")
+        .order("city_name", { ascending: true });
 
-      setGames((data as GameRow[]) ?? []);
+      setTrackedCities((data as TrackedCityRow[]) ?? []);
     }
 
-    loadGames();
+    loadTrackedCities();
   }, []);
 
   useEffect(() => {
     async function loadFavorites() {
       if (!user) {
-        setFavoriteTeams([]);
+        setFavoriteCityIds([]);
         return;
       }
 
-      setLoadingFavorites(true);
-
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("favorites")
-        .select("team_abbr")
+        .select("city_id")
         .eq("user_id", user.id);
 
-      if (!error) {
-        setFavoriteTeams(((data as FavoriteRow[]) ?? []).map((row) => row.team_abbr));
-      }
-
-      setLoadingFavorites(false);
+      setFavoriteCityIds(((data as FavoriteRow[]) ?? []).map((row) => row.city_id));
     }
 
     loadFavorites();
   }, [user]);
 
-  const availableTeams = useMemo(() => {
-    const fromGames = new Set<string>();
-
-    for (const game of games) {
-      fromGames.add(game.home_team);
-      fromGames.add(game.away_team);
-    }
-
-    if (fromGames.size === 0) {
-      return teamOptions;
-    }
-
-    return teamOptions.filter((team) => fromGames.has(team.abbr));
-  }, [games]);
-
-  async function toggleFavorite(teamAbbr: string) {
+  async function toggleFavorite(cityId: string) {
     if (!user) {
       return;
     }
 
-    setPendingTeam(teamAbbr);
+    setPendingCityId(cityId);
     setMessage(null);
 
-    const isFavorite = favoriteTeams.includes(teamAbbr);
+    const isFavorite = favoriteCityIds.includes(cityId);
 
     if (isFavorite) {
       const { error } = await supabase
         .from("favorites")
         .delete()
         .eq("user_id", user.id)
-        .eq("team_abbr", teamAbbr);
+        .eq("city_id", cityId);
 
       if (error) {
         setMessage(error.message);
       } else {
-        setFavoriteTeams((current) => current.filter((team) => team !== teamAbbr));
+        setFavoriteCityIds((current) => current.filter((value) => value !== cityId));
       }
     } else {
       const { error } = await supabase.from("favorites").insert({
         user_id: user.id,
-        team_abbr: teamAbbr,
+        city_id: cityId,
       });
 
       if (error) {
         setMessage(error.message);
       } else {
-        setFavoriteTeams((current) => [...current, teamAbbr]);
+        setFavoriteCityIds((current) => [...current, cityId]);
       }
     }
 
-    setPendingTeam(null);
+    setPendingCityId(null);
   }
 
   return (
-    <section className="grid gap-6">
-      <div className="rounded-[2rem] border border-stone-900/10 bg-stone-50/80 p-7 shadow-[0_18px_60px_rgba(34,22,8,0.15)] backdrop-blur">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-stone-600">
-          My Teams
-        </p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-stone-950">
-          Pick the teams you want highlighted everywhere.
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-8 text-stone-700">
-          Your choices are saved to the `favorites` table in Supabase and scoped
-          to your account through RLS.
-        </p>
+    <section className="grid gap-6 pb-10 pt-4">
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-8 text-white shadow-[0_20px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+          <p className="text-[11px] font-bold uppercase tracking-[0.38em] text-cyan-200/90">
+            Personalization
+          </p>
+          <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] sm:text-5xl">
+            Build a private city watchlist on top of the public weather feed.
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
+            Every selection writes into `favorites` under your own `auth.uid()`.
+            The dashboard then filters the realtime stream into your custom set of
+            tracked locations.
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-6 text-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+            Saved cities
+          </p>
+          <p className="mt-3 text-5xl font-black tracking-[-0.05em] text-white">
+            {favoriteCityIds.length}
+          </p>
+          <p className="mt-3 text-sm leading-7 text-slate-300">
+            Pick the climates you care about most, then jump back to the dashboard.
+          </p>
+          <Link
+            href="/"
+            className="mt-5 inline-flex rounded-full bg-lime-300 px-4 py-2 text-sm font-semibold text-slate-950 shadow-[0_10px_24px_rgba(184,255,109,0.22)] hover:bg-lime-200"
+          >
+            Back to dashboard
+          </Link>
+        </div>
       </div>
 
       {loading ? (
-        <div className="rounded-[2rem] border border-stone-900/10 bg-white/70 p-8 text-stone-700">
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-8 text-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
           Checking your session...
         </div>
       ) : !user ? (
-        <div className="rounded-[2rem] border border-stone-900/10 bg-white/75 p-8 text-stone-700">
-          <p className="text-lg font-semibold text-stone-950">
-            Sign in to save favorites.
-          </p>
-          <p className="mt-3 leading-7">
-            You need an authenticated account before this page can write to
-            `favorites`.
+        <div className="rounded-[2rem] border border-white/10 bg-[rgba(7,16,30,0.76)] p-8 text-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+          <p className="text-lg font-semibold text-white">Sign in required</p>
+          <p className="mt-3 max-w-2xl leading-7 text-slate-300">
+            Authentication is required before the app can write user-specific rows
+            into `favorites`.
           </p>
           <Link
             href="/sign-in"
-            className="mt-6 inline-flex rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-stone-50 transition hover:bg-stone-800"
+            className="mt-5 inline-flex rounded-full bg-cyan-200 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-100"
           >
             Go to sign in
           </Link>
         </div>
       ) : (
         <>
-          <div className="rounded-[2rem] border border-stone-900/10 bg-[linear-gradient(160deg,rgba(255,251,235,0.96),rgba(255,237,213,0.9))] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-stone-600">
-                  Saved favorites
-                </p>
-                <p className="mt-2 text-3xl font-black text-stone-950">
-                  {loadingFavorites ? "..." : favoriteTeams.length}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-stone-950 px-5 py-4 text-stone-50">
-                <p className="text-xs uppercase tracking-[0.24em] text-amber-300">
-                  Requirement
-                </p>
-                <p className="mt-2 text-lg font-semibold">
-                  Pick at least 3 teams to follow.
-                </p>
-              </div>
-            </div>
+          {message ? (
+            <p className="rounded-[1.5rem] border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+              {message}
+            </p>
+          ) : null}
 
-            {favoriteTeams.length < 3 ? (
-              <p className="mt-5 rounded-2xl border border-amber-300/50 bg-amber-100 px-4 py-3 text-sm font-medium text-amber-950">
-                Pick at least 3 teams to follow.
-              </p>
-            ) : (
-              <p className="mt-5 rounded-2xl border border-emerald-300/50 bg-emerald-100 px-4 py-3 text-sm font-medium text-emerald-950">
-                You are following enough teams to personalize the full dashboard.
-              </p>
-            )}
-
-            {message ? (
-              <p className="mt-4 rounded-2xl border border-rose-300/50 bg-rose-100 px-4 py-3 text-sm text-rose-900">
-                {message}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {availableTeams.map((team) => {
-              const selected = favoriteTeams.includes(team.abbr);
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {trackedCities.map((city) => {
+              const selected = favoriteCityIds.includes(city.id);
 
               return (
                 <button
-                  key={team.abbr}
+                  key={city.id}
                   type="button"
-                  onClick={() => toggleFavorite(team.abbr)}
-                  disabled={pendingTeam === team.abbr}
-                  className={`rounded-[1.75rem] border p-5 text-left transition ${
-                    selected
-                      ? "border-amber-400 bg-stone-950 text-stone-50 shadow-[0_14px_36px_rgba(34,22,8,0.25)]"
-                      : "border-stone-900/10 bg-white/75 text-stone-950 hover:border-stone-900/20 hover:bg-white"
+                  onClick={() => toggleFavorite(city.id)}
+                  disabled={pendingCityId === city.id}
+                  className={`rounded-[2rem] border p-[1px] text-left shadow-[0_18px_45px_rgba(0,0,0,0.22)] ${
+                    selected ? "border-cyan-200/30" : "border-white/10"
                   } disabled:opacity-60`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                        {team.abbr}
-                      </p>
-                      <p
-                        className={`mt-2 text-xl font-bold ${
-                          selected ? "text-stone-50" : "text-stone-950"
-                        }`}
-                      >
-                        {team.name}
-                      </p>
-                    </div>
-                    <span className="text-2xl text-amber-400">
-                      {selected ? "★" : "☆"}
-                    </span>
-                  </div>
-                  <p
-                    className={`mt-5 text-sm ${
-                      selected ? "text-stone-300" : "text-stone-600"
+                  <div
+                    className={`h-full rounded-[calc(2rem-1px)] p-5 ${
+                      selected
+                        ? "bg-[linear-gradient(155deg,rgba(8,41,69,0.95),rgba(9,88,124,0.9))] text-white"
+                        : "bg-[rgba(245,250,255,0.92)] text-slate-950"
                     }`}
                   >
-                    {selected ? "Saved to Supabase favorites." : "Click to follow this team."}
-                  </p>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                      <p
+                          className={`text-[11px] font-bold uppercase tracking-[0.34em] ${
+                            selected ? "text-cyan-200/80" : "text-slate-500"
+                          }`}
+                        >
+                          {city.country_code}
+                        </p>
+                        <p className="mt-2 text-3xl font-black tracking-[-0.04em]">
+                          {city.city_name}
+                        </p>
+                      </div>
+                      <span className={`text-2xl ${selected ? "text-lime-300" : "text-slate-400"}`}>
+                        {selected ? "★" : "☆"}
+                      </span>
+                    </div>
+
+                    <p
+                      className={`mt-5 text-sm leading-7 ${
+                        selected ? "text-slate-100" : "text-slate-600"
+                      }`}
+                    >
+                      {selected
+                        ? "This city is pinned into your personalized dashboard."
+                        : "Click to include this city in your private realtime weather mix."}
+                    </p>
+                  </div>
                 </button>
               );
             })}
