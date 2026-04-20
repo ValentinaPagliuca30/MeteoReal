@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { useUnits } from "@/components/units-provider";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -14,6 +15,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
+  const { unit, toggle } = useUnits();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   async function handleSignOut() {
@@ -57,6 +59,18 @@ export function SiteHeader() {
               );
             })}
           </nav>
+
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={`Switch to ${unit === "C" ? "Fahrenheit" : "Celsius"}`}
+            title={`Switch to ${unit === "C" ? "Fahrenheit" : "Celsius"}`}
+            className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-white/10"
+          >
+            <span className={unit === "C" ? "text-cyan-200" : "text-slate-400"}>°C</span>
+            <span className="text-slate-500">/</span>
+            <span className={unit === "F" ? "text-cyan-200" : "text-slate-400"}>°F</span>
+          </button>
 
           {loading ? (
             <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">

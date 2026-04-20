@@ -3,17 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { useUnits } from "@/components/units-provider";
 import { cityOptions, getAccentForCity } from "@/lib/city-options";
 import { supabase } from "@/lib/supabase";
 import type { FavoriteRow, WeatherRow } from "@/lib/types";
-
-function formatTemperature(value: number | null) {
-  if (value === null) {
-    return "--";
-  }
-
-  return `${Math.round(value)}°C`;
-}
+import { formatTemp } from "@/lib/units";
 
 function weatherEmoji(code: number | null) {
   if (code === null) return "•";
@@ -40,6 +34,7 @@ function weatherOverlayClass(code: number | null) {
 
 export function Scoreboard() {
   const { user } = useAuth();
+  const { unit } = useUnits();
   const [snapshots, setSnapshots] = useState<WeatherRow[]>([]);
   const [favoriteCityIds, setFavoriteCityIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -314,7 +309,7 @@ export function Scoreboard() {
                         Temperature
                       </p>
                       <p className="mt-2 text-6xl font-black tracking-[-0.06em] text-slate-950">
-                        {formatTemperature(snapshot.temperature_c)}
+                        {formatTemp(snapshot.temperature_c, unit)}
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-950/10 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-800">
@@ -328,7 +323,7 @@ export function Scoreboard() {
                         Feels like
                       </p>
                       <p className="mt-2 text-2xl font-bold text-slate-950">
-                        {formatTemperature(snapshot.apparent_temperature_c)}
+                        {formatTemp(snapshot.apparent_temperature_c, unit)}
                       </p>
                     </div>
                     <div className="rounded-[1.25rem] border border-slate-900/6 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">

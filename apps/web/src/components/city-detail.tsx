@@ -2,18 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CitySwitcher } from "@/components/city-switcher";
+import { ShouldIAsk } from "@/components/should-i-ask";
+import { useUnits } from "@/components/units-provider";
+import { fetchCityPhoto } from "@/lib/city-photo";
 import { cityOptions } from "@/lib/city-options";
 import { supabase } from "@/lib/supabase";
 import type { WeatherRow } from "@/lib/types";
+import { formatTemp } from "@/lib/units";
 import { getMiseryInsight } from "@/lib/weather-insights";
-
-function formatTemperature(value: number | null) {
-  if (value === null) {
-    return "--";
-  }
-
-  return `${Math.round(value)}°C`;
-}
 
 function weatherEmoji(code: number | null) {
   if (code === null) return "•";
@@ -51,8 +48,11 @@ function weatherHeroClasses(code: number | null) {
 }
 
 export function CityDetail({ cityId }: { cityId: string }) {
+  const { unit } = useUnits();
   const cityMeta = cityOptions.find((city) => city.id === cityId);
   const [snapshot, setSnapshot] = useState<WeatherRow | null>(null);
+  const [allCities, setAllCities] = useState<WeatherRow[]>([]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,6 +82,37 @@ export function CityDetail({ cityId }: { cityId: string }) {
       void supabase.removeChannel(channel);
     };
   }, [cityId]);
+
+  useEffect(() => {
+    async function loadAllCities() {
+      const { data } = await supabase
+        .from("weather_snapshots")
+        .select("*")
+        .order("city_name", { ascending: true });
+
+      setAllCities((data as WeatherRow[]) ?? []);
+    }
+
+    loadAllCities();
+  }, []);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    let cancelled = false;
+    setPhotoUrl(null);
+
+    fetchCityPhoto(cityId, snapshot.city_name)
+      .then((url) => {
+        if (!cancelled) setPhotoUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setPhotoUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cityId, snapshot?.city_name]);
 
   const insight = useMemo(() => {
     return snapshot ? getMiseryInsight(snapshot) : null;
@@ -121,24 +152,33 @@ export function CityDetail({ cityId }: { cityId: string }) {
     <section className="grid gap-6 pb-10 pt-4">
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className={`relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br ${weatherHeroClasses(snapshot.weather_code)} p-8 text-white shadow-[0_24px_80px_rgba(2,8,23,0.35)]`}>
-          <div className={`weather-overlay opacity-60 ${weatherOverlayClass(snapshot.weather_code)}`} />
-          <p className="text-[11px] font-bold uppercase tracking-[0.4em] text-cyan-100/80">
+          {photoUrl ? (
+            <>
+              <div
+                className="absolute inset-0 bg-cover bg-center opacity-55"
+                style={{ backgroundImage: `url(${photoUrl})` }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-slate-950/10" />
+            </>
+          ) : null}
+          <div className={`weather-overlay relative opacity-60 ${weatherOverlayClass(snapshot.weather_code)}`} />
+          <p className="relative text-[11px] font-bold uppercase tracking-[0.4em] text-cyan-100/80">
             {snapshot.country_code} Location Report
           </p>
-          <div className="mt-4 flex items-start justify-between gap-4">
+          <div className="relative mt-4 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-5xl font-black tracking-[-0.05em] sm:text-6xl">
                 {snapshot.city_name}
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-8 text-slate-100/88">
-                {snapshot.weather_label}. The air feels like {formatTemperature(snapshot.apparent_temperature_c)},
+                {snapshot.weather_label}. The air feels like {formatTemp(snapshot.apparent_temperature_c, unit)},
                 with wind moving at{" "}
                 {snapshot.wind_speed_kmh === null ? "--" : `${Math.round(snapshot.wind_speed_kmh)} km/h`}.
               </p>
             </div>
             <div className="text-6xl">{weatherEmoji(snapshot.weather_code)}</div>
           </div>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="relative mt-8 flex flex-wrap gap-3">
             <Link
               href="/"
               className="rounded-full bg-cyan-200 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-100"
@@ -176,14 +216,14 @@ export function CityDetail({ cityId }: { cityId: string }) {
             <div className="rounded-[1.4rem] bg-slate-950 px-5 py-4 text-white">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Temperature</p>
               <p className="mt-2 text-4xl font-black tracking-[-0.05em]">
-                {formatTemperature(snapshot.temperature_c)}
+                {formatTemp(snapshot.temperature_c, unit)}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-[1.4rem] border border-slate-900/8 bg-white p-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Feels like</p>
                 <p className="mt-2 text-2xl font-bold text-slate-950">
-                  {formatTemperature(snapshot.apparent_temperature_c)}
+                  {formatTemp(snapshot.apparent_temperature_c, unit)}
                 </p>
               </div>
               <div className="rounded-[1.4rem] border border-slate-900/8 bg-white p-4">
@@ -224,6 +264,11 @@ export function CityDetail({ cityId }: { cityId: string }) {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <ShouldIAsk latitude={snapshot.latitude} longitude={snapshot.longitude} />
+        <CitySwitcher currentCityId={cityId} cities={allCities} />
       </div>
     </section>
   );
